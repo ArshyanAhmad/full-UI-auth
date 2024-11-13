@@ -3,6 +3,27 @@ import { apiError } from "../utils/ApiError.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
+const generateAccessAndRefereshToken = async function (userId) {
+  try {
+    const user = await User.findById(userId);
+
+    if (!user) {
+      const error = new apiError(400, "Invalid Id");
+      return res.status(400).json(error.toJSON());
+    }
+
+    const accessToken = await user.generateAccessToken();
+    return accessToken;
+  } catch (error) {
+    const err = new apiError(
+      500,
+      "Something went wrong while generating access and refresh tokens",
+      error
+    );
+    return res.status(400).json(err.toJSON());
+  }
+};
+
 export const signUp = asyncHandler(async (req, res) => {
   const { username, email, password } = req.body;
 
@@ -62,9 +83,17 @@ export const LoginUser = asyncHandler(async (req, res) => {
       return res.status(400).json(error.toJSON());
     }
 
+    const accessToken = await generateAccessAndRefereshToken(user._id);
+
+    const options = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+    };
+
     return res
       .status(200)
-      .json(new apiResponse(200, user, "Login successfully"));
+      .cookie("accessToken", accessToken, options)
+      .render("home");
   } catch (error) {
     console.log("Login Failed!", error);
     const err = new apiError(500, "Login failed due to an internal error");
@@ -76,6 +105,17 @@ export const register = (req, res) => {
   res.render("register");
 };
 
-export const Login = (req, res) => {
-  res.render("login");
+export const Login = async (req, res) => {
+  try {
+    const accessToken = req.cookies.accessToken;
+
+    if (accessToken) {
+      return res.render("home");
+    }
+
+    res.render("login");
+  } catch (error) {
+    const err = new apiError(400, "Error in Login");
+    return res.status(400).json(err.toJSON());
+  }
 };
